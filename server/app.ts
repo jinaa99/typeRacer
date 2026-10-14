@@ -43,6 +43,11 @@ export function createGameServer(config: ServerConfig, clientDir?: string): Game
     app.use(express.static(clientDir));
     // Single-page app: unknown GET routes return index.html.
     app.get(/^(?!\/socket\.io\/).*/, (_req, res) => res.sendFile(path.join(clientDir, 'index.html')));
+  } else {
+    // Realtime-only deployment (frontend hosted elsewhere, e.g. Vercel).
+    app.get('/', (_req, res) => {
+      res.type('text').send('Type Race realtime server is running.');
+    });
   }
 
   const notifier: Notifier = {

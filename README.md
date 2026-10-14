@@ -28,6 +28,7 @@ Open http://localhost:5173.
 
 ```bash
 npm run build      # client -> dist/client, server bundle -> dist/server/index.js
+                   # (or separately: npm run build:client / npm run build:server)
 npm start          # serves everything on $PORT (default 3001)
 ```
 
@@ -163,7 +164,7 @@ See `.env.example`. All variables are optional.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | 3001 | HTTP + WebSocket port |
-| `CORS_ORIGIN` | unset | Comma-separated allowed origins, only needed if the frontend is on another origin |
+| `CORS_ORIGIN` | unset | Comma-separated allowed origins when the frontend is on another origin (e.g. Vercel). `*` matches part of a subdomain: `https://typeracer-*.vercel.app` |
 | `VITE_SERVER_URL` | unset | Build-time: realtime server URL for a separately hosted frontend |
 | `CLIENT_DIST_DIR` | `dist/client` | Directory of the built client to serve |
 | `COUNTDOWN_MS` | 3000 | Pre-race countdown |
@@ -175,31 +176,52 @@ See `.env.example`. All variables are optional.
 
 ## Deployment
 
-The server needs a **long-running Node process with WebSocket support**, for example:
+The **frontend runs on Vercel**. The **realtime server runs on Render**.
 
-- Render (Web Service)
-- Railway
-- Fly.io
-- Heroku
-- a VPS or container
+Vercel's WebSocket support (public beta since June 2026) can't host this server as written:
+- Each connection is pinned to its own function instance. Lobbies are kept in server memory, so players on different instances could not see each other's rooms.
+- Connections are closed when the function reaches its maximum duration.
 
-**Recommended:** a single service.
+Render runs the Socket.IO server as one long-running Node process, which is what it needs.
 
-```bash
-npm ci && npm run build
-npm start              # set PORT if the platform requires it
+```
+Browser ──HTTPS──▶ Vercel (static site: dist/client)
+   │
+   └──WebSocket──▶ Render (Socket.IO server: dist/server/index.js)
 ```
 
-The same process serves the frontend and Socket.IO, so no CORS setup is needed. `GET /health` returns `{ ok: true }` for health checks.
+### 1. Realtime server on Render
 
-**Constraints:**
+1. Push this repository to GitHub.
+2. In Render, choose **New → Blueprint** and select the repository. `render.yaml` creates the `typeracer-realtime` web service:
+   - build: `npm ci --include=dev && npm run build:server`
+   - start: `npm start`
+   - health check: `/health`
+3. When asked for `CORS_ORIGIN`, enter your Vercel URL and a wildcard for preview deployments:
+   ```
+   https://typeracer.vercel.app,https://typeracer-*.vercel.app
+   ```
+   You can fill this in after step 2 of the Vercel setup and redeploy.
+4. Note the service URL, e.g. `https://typeracer-realtime.onrender.com`. Opening it shows "Type Race realtime server is running."
 
-- **Serverless or static hosts** (Vercel, Netlify, GitHub Pages, Cloudflare Pages) cannot host the Socket.IO server. If you want the frontend on one of them:
-  - deploy the server separately on a host from the list above;
-  - set `CORS_ORIGIN` on the server to the frontend's origin;
-  - build the frontend with `VITE_SERVER_URL=https://your-realtime-server` and deploy `dist/client`.
-- **Single instance only.** Room state is in memory, so run exactly one server instance. Restarting the server ends all active lobbies. Scaling out would need sticky sessions plus a shared store (for example, the Socket.IO Redis adapter with room state moved to Redis), which is not implemented.
-- **Proxies:** if a reverse proxy sits in front of the server, it must allow WebSocket upgrades on `/socket.io/`.
+### 2. Frontend on Vercel
+
+1. In Vercel, choose **Add New → Project** and import the same repository. `vercel.json` sets:
+   - build command: `npm run build:client`
+   - output directory: `dist/client`
+2. Under **Settings → Environment Variables**, add `VITE_SERVER_URL` = your Render URL (e.g. `https://typeracer-realtime.onrender.com`). Enable it for Production and Preview.
+3. Deploy. `VITE_SERVER_URL` is baked in at build time, so redeploy after changing it.
+4. If the Vercel URL differs from what you entered in `CORS_ORIGIN`, update it on Render.
+
+### Things to know
+
+- **Free Render instances sleep after about 15 minutes without traffic.** The first visitor afterwards waits up to about a minute while the server wakes. The multiplayer screen shows a "connecting / waking up" message during that time; solo mode doesn't need the server at all. A paid instance avoids sleeping.
+- **Run exactly one server instance.** Lobbies live in memory. A restart or redeploy ends all active lobbies, and scaling to several instances would need a shared store (e.g. the Socket.IO Redis adapter), which is not implemented.
+- **`CORS_ORIGIN` must include every site origin** that should be able to play multiplayer. A `*` matches part of one subdomain, e.g. `https://typeracer-*.vercel.app`.
+
+### Single-service alternative
+
+Any host that runs a long-lived Node process (Render, Railway, Fly.io, a VPS) can also serve both parts from one process. Run `npm run build && npm start`. Leave `VITE_SERVER_URL` and `CORS_ORIGIN` unset.
 
 ## Project layout
 

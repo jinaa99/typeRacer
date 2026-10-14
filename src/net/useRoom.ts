@@ -115,12 +115,11 @@ export function useRoom(): RoomHook {
     };
     const onConnect = () => {
       setConnected(true);
-      // Clears a stale "cannot reach the server" message.
+      // Errors from before the reconnect no longer apply.
       setError(null);
       rejoin();
     };
     const onDisconnect = () => setConnected(false);
-    const onConnectError = () => setError('Cannot reach the game server. Retrying...');
     const onState = (state: PublicRoomState) => {
       if (state.code === sessionRef.current?.code) applyRoomState(state);
     };
@@ -137,7 +136,6 @@ export function useRoom(): RoomHook {
 
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
-    socket.on('connect_error', onConnectError);
     socket.on('room:state', onState);
     socket.on('race:progress', onProgress);
     socket.on('race:resync', onResync);
@@ -147,8 +145,7 @@ export function useRoom(): RoomHook {
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
-      socket.off('connect_error', onConnectError);
-      socket.off('room:state', onState);
+        socket.off('room:state', onState);
       socket.off('race:progress', onProgress);
       socket.off('race:resync', onResync);
       socket.off('room:removed', onRemoved);

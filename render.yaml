@@ -1,0 +1,18 @@
+# Render Blueprint for the realtime (Socket.IO) server.
+# The frontend is deployed separately on Vercel (see vercel.json).
+services:
+  - type: web
+    name: typeracer-realtime
+    runtime: node
+    plan: free
+    # --include=dev: esbuild is a dev dependency and is needed to bundle the server.
+    buildCommand: npm ci --include=dev && npm run build:server
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Your Vercel URL, plus a wildcard for preview deployments, e.g.
+      # https://typeracer.vercel.app,https://typeracer-*.vercel.app
+      - key: CORS_ORIGIN
+        sync: false

@@ -141,7 +141,11 @@ function JoinForm({ hook, initialCode }: { hook: RoomHook; initialCode: string }
         </form>
       </div>
       {hook.busy && <p className="muted center">Connecting…</p>}
-      {!hook.connected && <p className="muted center">Waiting for the game server…</p>}
+      {!hook.connected && (
+        <p className="muted center" data-testid="server-waking">
+          Connecting to the game server… If nobody has played for a while, it can take up to a minute to wake up.
+        </p>
+      )}
     </div>
   );
 }

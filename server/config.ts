@@ -15,7 +15,8 @@ export interface GameConfig {
 
 export interface ServerConfig extends GameConfig {
   port: number;
-  corsOrigins: string[] | null;
+  /** Allowed browser origins for Socket.IO; null means same-origin only. */
+  corsOrigins: (string | RegExp)[] | null;
 }
 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
@@ -39,12 +40,29 @@ function intFromEnv(env: NodeJS.ProcessEnv, key: string, fallback: number, min =
   return value;
 }
 
+/**
+ * Parses CORS_ORIGIN: comma-separated origins, where `*` matches one
+ * subdomain label fragment, e.g. `https://typeracer-*.vercel.app` for
+ * Vercel preview deployments.
+ */
+export function parseCorsOrigins(raw: string | undefined): (string | RegExp)[] | null {
+  const entries = raw?.split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean) ?? [];
+  if (entries.length === 0) return null;
+  return entries.map((entry) => {
+    if (!entry.includes('*')) return entry;
+    const pattern = entry
+      .split('*')
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('[A-Za-z0-9-]*');
+    return new RegExp(`^${pattern}$`);
+  });
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const d = DEFAULT_GAME_CONFIG;
-  const cors = env.CORS_ORIGIN?.split(',').map((s) => s.trim()).filter(Boolean);
   return {
     port: intFromEnv(env, 'PORT', 3001, 1),
-    corsOrigins: cors && cors.length > 0 ? cors : null,
+    corsOrigins: parseCorsOrigins(env.CORS_ORIGIN),
     countdownMs: intFromEnv(env, 'COUNTDOWN_MS', d.countdownMs),
     reconnectGraceMs: intFromEnv(env, 'RECONNECT_GRACE_MS', d.reconnectGraceMs),
     hostGraceMs: intFromEnv(env, 'HOST_GRACE_MS', d.hostGraceMs),
